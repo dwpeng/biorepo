@@ -1,0 +1,15 @@
+[project]
+name = "biorepo"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "dwpeng",email = "dwpeng1122@foxmail.com"},
+]
+dependencies = []
+requires-python = ">=3.9"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
