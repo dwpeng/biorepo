@@ -1,14 +1,14 @@
 import enum
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Dict, List, Union
 
 from rich.progress import Progress, SpinnerColumn, TaskProgressColumn
 
-from . import ui
-from .exception import BioReopException
-from .shell import Shell
-from .source import BaseSource
+from biorepo import ui
+from biorepo.exception import BioReopException
+from biorepo.shell import Shell
+from biorepo.source import BaseSource
 
 
 class RunStatus(enum.Enum):
@@ -23,13 +23,13 @@ class Run:
         self.shell = shell
         self.source = source
 
-    def run(self, progress: Progress):
+    def install(self, progress: Progress):
         job = progress.add_task(
             f"Installing... [req]{self.source.name}[/]", text="", total=None
         )
         try:
             self.source.create_source()
-            self.shell.execute()
+            self.shell.execute(progress)
             self.status = RunStatus.SUCCESS
             progress.live.console.print(
                 f"  [success]{ui.Emoji.SUCC}[/] Install [req]{self.source.name}[/] successful"
@@ -43,21 +43,44 @@ class Run:
         finally:
             progress.update(job, visible=False)
 
+    def remove(self, progress: Progress):
+        job = progress.add_task(
+            f"Removing... [req]{self.source.name}[/]", text="", total=None
+        )
+        try:
+            self.source.remove()
+            self.status = RunStatus.SUCCESS
+            progress.live.console.print(
+                f"  [success]{ui.Emoji.SUCC}[/] Remove [req]{self.source.name}[/] successful"
+            )
+        except BioReopException as e:
+            self.status = RunStatus.FAIL
+            progress.live.console.print(
+                f"  [error]{ui.Emoji.FAIL}[/] Remove [primary]{self.source.name}[/] failed"
+            )
+            progress.live.console.print(f"    [error]{e.msg}[/]")
+        finally:
+            progress.update(job, visible=False)
+
 
 class Install:
-    def __init__(
-        self,
-        runs: List[Run],
-    ):
-        self.thread_pool = ThreadPoolExecutor(
-            min(
-                multiprocessing.cpu_count(),
-                len(runs),
-            )
-        )
-        self.runs = runs
+    def __init__(self, nthread: int = 4):
+        self.runs: Dict[str, Run] = {}
+        self.nthread = nthread
 
-    def install(self):
+    def create_executor(self):
+        return ThreadPoolExecutor(
+            min(len(self.runs), self.nthread, multiprocessing.cpu_count()) or 1
+        )
+
+    def add_run(self, r: Union[Run, List[Run]]):
+        if not isinstance(r, list):
+            r = [r]
+        for run in r:
+            self.runs[run.source.name] = run
+
+    def executor(self, runs: List[Run], action: str):
+        pool = self.create_executor()
         with ui.UI().make_progress(
             " ",
             SpinnerColumn(ui.SPINNER, speed=1, style="primary"),
@@ -66,14 +89,24 @@ class Install:
             TaskProgressColumn("[info]{task.percentage:>3.0f}%[/]"),
         ) as progress:
             live = progress.live
-            for run in self.runs:
-                self.thread_pool.submit(run.run, progress)
-            self.thread_pool.shutdown(wait=True)
+            live.console.print("")
+            for run in runs:
+                pool.submit(getattr(run, action), progress)
+            pool.shutdown(wait=True)
 
-        failed = [run for run in self.runs if run.status == RunStatus.FAIL]
-        if failed:
-            live.console.print(
-                f"[error]{ui.Emoji.FAIL}[/] Install failed: [primary]{', '.join([run.source.name for run in failed])}[/]"
-            )
-        else:
+        failed = [
+            run for name, run in self.runs.items() if run.status == RunStatus.FAIL
+        ]
+        if not failed:
             live.console.print(f"{ui.Emoji.POPPER} All complete!")
+
+    def install(self):
+        if not self.runs:
+            ui.error("No source to install")
+            exit(0)
+        self.executor(list(self.runs.values()), "install")
+
+    def remove(self):
+        if not self.runs:
+            exit(0)
+        self.executor(list(self.runs.values()), "remove")

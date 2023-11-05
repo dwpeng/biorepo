@@ -4,13 +4,15 @@ from pathlib import Path
 from subprocess import PIPE, Popen
 from typing import List, Optional
 
+from rich.progress import Progress
+
 from .env import Envirment
 from .exception import ShellException
 
 
 class ShellEnum(Enum):
-    PYTHON = 'python'
-    CMD = 'shell'
+    PYTHON = "python"
+    CMD = "shell"
     OTHER = 3
 
     def __str__(self):
@@ -20,17 +22,19 @@ class ShellEnum(Enum):
 class Shell:
     def __init__(
         self,
-        working_dir: Path,
+        source_path: Path,
+        download_path: Path,
         run: List[str],
         envs: Optional[List[Envirment]] = None,
         shell_type: ShellEnum = ShellEnum.CMD,
     ):
-        self.working_dir = working_dir
+        self.source_path = source_path.absolute()
+        self.download_path = download_path.absolute()
         self.shell_type = shell_type
         self.envs = envs or []
-        self.run = run
+        self.run = run or []
 
-    def execute(self):
+    def execute(self, progress: Progress):
         raise NotImplementedError
 
     def __str__(self):
@@ -49,24 +53,43 @@ class CMDShell(Shell):
         for env in self.envs:
             env.unset()
 
-    def _execute(self):
+    def replace_cmd(self, cmd: str):
+        if "{PATH}" in cmd:
+            return cmd.replace("{PATH}", str(self.download_path))
+        if "{SOURCE_PATH}" in cmd:
+            return cmd.replace("{SOURCE_PATH}", str(self.source_path))
+        return cmd
+
+    def _execute(self, run: str):
         self.set_env()
         cmd = Popen(
-            self.run,
+            run,
             stdout=PIPE,
             stderr=PIPE,
             shell=True,
-            cwd=self.working_dir,
+            cwd=self.source_path,
             env=os.environ.copy(),
         ).communicate()
         stdout, stderr = cmd
         self.unset_env()
         return stdout, stderr
 
-    def execute(self):
-        stdout, stderr = self._execute()
-        if stderr:
-            raise ShellException(stderr.decode())
+    def execute(self, progress: Progress):
+        if not self.run:
+            return
+
+        for run in self.run:
+            run = self.replace_cmd(run)
+            stderr = ""
+            try:
+                stdout, stderr = self._execute(run)
+                # TODO: handle stderr
+                stderr = ""
+            except Exception as e:
+                stderr = str(e)
+            if stderr:
+                raise ShellException(stderr)
+
 
 class PythonShell(Shell):
     def execute(self):

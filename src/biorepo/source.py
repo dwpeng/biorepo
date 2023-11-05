@@ -8,13 +8,13 @@ import git
 import httpx
 from httpx import Client
 
-from .exception import SourceException
+from biorepo.exception import SourceException
 
 
 class SourceEnum(Enum):
-    URL = 'url'
-    GIT = 'git'
-    LOCAL = 'local'
+    URL = "url"
+    GIT = "git"
+    LOCAL = "local"
 
 
 class SourceManager:
@@ -55,6 +55,7 @@ class SourceManager:
             return True
         return False
 
+
 class BaseSource(SourceManager):
     def __init__(
         self,
@@ -64,18 +65,19 @@ class BaseSource(SourceManager):
         git_branch: Optional[str] = None,
         git_commit: Optional[str] = None,
         git_recursive: bool = False,
-        download_url: Optional[str] = None,
+        url: Optional[str] = None,
         user_agent: Optional[str] = None,
-        local_path: Optional[Path] = None,
+        path: Optional[Path] = None,
+        **kwargs,
     ):
         super().__init__(name, root)
-        self.git_url = git_url
+        self.git_url = str(git_url)
         self.git_branch = git_branch
         self.git_commit = git_commit
         self.git_recursive = git_recursive
-        self.download_url = download_url
+        self.download_url = str(url)
         self.user_agent = user_agent
-        self.local_path = local_path
+        self.local_path = Path(str(path))
         if self.download_url:
             self.source_type = SourceEnum.URL
         elif self.git_url:
@@ -98,6 +100,8 @@ class BaseSource(SourceManager):
 
     @property
     def version(self) -> str:
+        if not self.source_path.exists():
+            return ""
         if self.version_path.exists():
             with open(self.version_path, "r") as f:
                 return f.read()
@@ -113,7 +117,10 @@ class BaseSource(SourceManager):
 
 class UrlSource(BaseSource):
     def get_response_modtime(self, url: str) -> float:
-        client = Client(headers={"user-agent": self.user_agent or "biorepo/0.0.1"})
+        try:
+            client = Client(headers={"user-agent": self.user_agent or "biorepo/0.0.1"})
+        except:  # noqa: E722
+            return 0.0
         r = client.head(url)
         if "Last-Modified" not in r.headers:
             return 0.0
@@ -138,7 +145,15 @@ class UrlSource(BaseSource):
             with open(self.source_path / self.name, "wb") as f:
                 f.write(r.content)
         except httpx.HTTPError as e:
+            client.close()
+            self.remove()
             raise SourceException(f"Download {self.download_url} failed: {e}")
+        except Exception as e:
+            self.remove()
+            raise SourceException(f"Download {self.download_url} failed: {e}")
+
+    def __str__(self):
+        return "URL(url=%s)" % self.download_url
 
 
 class GitSource(BaseSource):
@@ -207,6 +222,7 @@ class GitSource(BaseSource):
         try:
             self._create_source()
         except git.GitCommandError as e:
+            self.remove()
             raise SourceException(f"Git clone {self.git_url} failed: {e}")
 
 
@@ -243,4 +259,5 @@ class LocalSource(BaseSource):
         try:
             self._create_source()
         except Exception as e:
+            self.remove()
             raise SourceException(f"Copy {self.local_path} failed: {e}")

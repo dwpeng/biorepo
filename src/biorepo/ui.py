@@ -49,14 +49,18 @@ else:
     SPINNER = "dots"
 
 
+def info(msg: str, *args, **kwargs):
+    _console.print(msg, style="info", *args, **kwargs)
+
+def error(msg: str, *args, **kwargs):
+    _console.print(msg, style="error", *args, **kwargs)
+
+
 class UI:
-    
     def open_spinner(self, text: str):
         return _console.status(text, spinner=SPINNER, spinner_style="primary")
 
-    def make_progress(
-        self, *columns: Union[str, ProgressColumn], **kwargs
-    ) -> Progress:
+    def make_progress(self, *columns: Union[str, ProgressColumn], **kwargs) -> Progress:
         return Progress(
             *columns,
             console=_console,

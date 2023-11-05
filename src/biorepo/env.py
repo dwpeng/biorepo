@@ -39,8 +39,7 @@ class Envirment:
     @classmethod
     def from_dict(cls, dict: Dict[str, Any]) -> List["Envirment"]:
         return [
-            Envirment(env_name, str(env_value))
-            for env_name, env_value in dict.items()
+            Envirment(env_name, str(env_value)) for env_name, env_value in dict.items()
         ]
 
     @classmethod

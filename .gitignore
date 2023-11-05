@@ -1,4 +1,7 @@
 # Byte-compiled / optimized / DLL files
+.biorepo/
+biorepo.toml
+.ruff_cache/
 __pycache__/
 *.py[cod]
 *$py.class
