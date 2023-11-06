@@ -115,8 +115,8 @@ def typer_run(
 
 
 def main():
-    if sys.argv[1] == "run":
+    if len(sys.argv) > 1 and sys.argv[1] == "run":
         if len(sys.argv) >= 3:
             run(sys.argv[2], sys.argv[3:])
             return
-        app()
+    app()
