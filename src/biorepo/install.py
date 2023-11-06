@@ -1,14 +1,14 @@
 import enum
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from rich.progress import Progress, SpinnerColumn, TaskProgressColumn
 
 from biorepo import ui
 from biorepo.exception import BioReopException
 from biorepo.shell import Shell
-from biorepo.source import BaseSource
+from biorepo.source import BaseSource, SourceEnum
 
 
 class RunStatus(enum.Enum):
@@ -30,6 +30,7 @@ class Run:
         try:
             self.source.create_source()
             self.shell.execute(progress)
+            self.source.copy_bin()            
             self.status = RunStatus.SUCCESS
             progress.live.console.print(
                 f"  [success]{ui.Emoji.SUCC}[/] Install [req]{self.source.name}[/] successful"
@@ -106,7 +107,32 @@ class Install:
             exit(0)
         self.executor(list(self.runs.values()), "install")
 
-    def remove(self):
-        if not self.runs:
+    def remove(self, names: Optional[List[str]] = None):
+        runs = []
+        if names:
+            for name in names:
+                if name in self.runs:
+                    runs.append(self.runs[name])
+                else:
+                    ui.error(f"Source [primary]{name}[/] not found")
+                    exit(0)
+        else:
+            runs = list(self.runs.values())
+        if not runs:
             exit(0)
-        self.executor(list(self.runs.values()), "remove")
+        self.executor(runs, "remove")
+
+    def list(self):
+        headers = ["name", "source"]
+        raws = []
+        for name, run in self.runs.items():
+            if run.source.source_type == SourceEnum.GIT:
+                name = f"[bold yellow]{name}[/]"
+            elif run.source.source_type == SourceEnum.URL:
+                name = f"[bold green]{name}[/]"
+            else:
+                name = f"[bold blue]{name}[/]"
+            uri = f"[link={run.source.source_uri} cyan]{run.source.source_uri}[/]"
+            raws.append([name, uri])
+        table = ui.UI().table(raws=raws, header=headers)
+        ui._console.print(table)

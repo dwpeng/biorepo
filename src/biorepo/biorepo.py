@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from biorepo import exception
 from biorepo.shell import ShellEnum
 from biorepo.source import SourceEnum
-from biorepo.ui import UI, _console
+from biorepo.ui import _console
 
 
 msg_replace = {
@@ -66,6 +66,7 @@ class OSEnum(enum.Enum):
     def __str__(self):
         return self.value
 
+
 class Base(BaseModel):
     ...
 
@@ -73,22 +74,23 @@ class Base(BaseModel):
 class BioRepoMeta(Base):
     version: str = pydantic.Field(min_length=1)
     name: str = pydantic.Field(min_length=1)
+    os: List[OSEnum]
     description: Optional[str] = None
     author: Optional[str] = None
     email: Optional[pydantic.EmailStr] = None
     home: Optional[pydantic.HttpUrl] = None
     date: Optional[datetime.date] = None
-    os: List[OSEnum] = [OSEnum.linux]
     require: Optional[List[str]] = None
 
 
 class SourceModel(Base):
     name: str = pydantic.Field(min_length=1)
-    bin: Union[List[str], str] = pydantic.Field(min_length=1)
+    bin: List[str]
     shell: Optional[ShellEnum] = ShellEnum.CMD
     group: Optional[Union[str, List[str]]] = None
     run: Optional[List[str]] = None
     envs: Optional[Dict[str, str]] = None
+    remove: Optional[bool] = False
 
 
 class URLSourceModel(SourceModel):
@@ -193,6 +195,11 @@ class SourceManager:
             OSEnum.mac: {},
         }
         self._env = env
+        self.sources_names: List[str] = []
+        self.sources_raw: Dict[str, Dict] = {}
+
+    def add_raw(self, flag: str, source: Dict):
+        self.sources_raw[flag] = source
 
     def add_source(
         self,
@@ -209,6 +216,14 @@ class SourceManager:
             if not source.envs:
                 source.envs = {}
             source.envs.update(self._env.get_bin_envs(source.name, os))
+        self.sources_names.append(source.name)
+
+    def del_source(self, name: str):
+        for os in list(OSEnum):
+            if f"name.{os}" in self.sources_raw:
+                self.sources_raw[f"name.{os}"]["remove"] = True
+        if name in self.sources_raw:
+            self.sources_raw[name]["remove"] = True
 
     def list(self):
         sys_os = get_os()
@@ -220,26 +235,27 @@ def get_os() -> OSEnum:
     platform = sys.platform
     if platform == OSEnum.linux.value:
         return OSEnum.linux
-    return OSEnum.linux
+    elif platform == OSEnum.windows.value:
+        return OSEnum.windows
+    else:
+        return OSEnum.mac
 
 
 class BioRepo:
-
     def __init__(self):
         self.meta: Optional[BioRepoMeta] = None
         self.envs = EnvManager()
         self.sources = SourceManager(self.envs)
 
     def get_source_list(self):
+        assert self.meta
+        if self.meta.os and get_os() not in self.meta.os:
+            return {}
         return self.sources.list()
 
     def get_require(self):
         assert self.meta
         return self.meta.require or []
-
-    def get_allow_os(self):
-        assert self.meta
-        return self.meta.os or []
 
     @staticmethod
     def detect_encoding(path: str) -> str:
@@ -323,10 +339,16 @@ class BioRepo:
             for os in oss:
                 source = os_spec[os]
                 source, display_os = source
+                source["name"] = bin_name
+                if display_os:
+                    self.sources.add_raw(bin_name + f".{display_os}", source)
+                else:
+                    self.sources.add_raw(bin_name, source)
                 source_type = self.guess_source_type(source)
                 try:
-                    source["name"] = bin_name
                     s = source_map[source_type](**source)
+                    if s.remove:
+                        continue
                     self.sources.add_source(s, target_os=os)
                 except pydantic.ValidationError as e:
                     source.pop("name")
@@ -338,38 +360,92 @@ class BioRepo:
                         rich_error(title, e, source)
         return self
 
+    @classmethod
     def new(
-        self,
+        cls,
         name: str,
         version: str,
+        email: Optional[str] = None,
+        author: Optional[str] = None,
         description: Optional[str] = None,
+        requirement: Optional[List[str]] = None,
+        os: Optional[List[OSEnum]] = None,
     ):
         biorepo = BioRepo()
         biorepo.meta = BioRepoMeta(
             name=name,
             version=version,
             description=description,
+            require=requirement,
+            email=email,
+            author=author,
+            os=os or [],
         )
-        return self
+        return biorepo
+
+    def remove_source(self, name: str):
+        self.sources.del_source(name)
 
     def dump(self, path: str):
         # write meta
         file = [
-            '[biorepo]',
+            "[biorepo]",
         ]
         assert self.meta
         for key, value in self.meta.model_dump().items():
             if not value:
-                file.append(f'# {key} = ""')
+                # file.append(f'# {key} = ""')
                 continue
             if isinstance(value, list):
-                v = '[\n  '
+                v = "[\n  "
                 v += ",\n  ".join(['"' + str(i) + '"' for i in value])
-                v += '\n]'
-                file.append(f'{key} = {v}')
+                v += "\n]"
+                file.append(f"{key} = {v}")
             else:
                 v = value
                 file.append(f'{key} = "{v}"')
         file.append("")
+
+        file.append("[env]")
+        # write env
+        if self.envs:
+            for os in list(OSEnum):
+                for key, value in self.envs.data[os][ENV_COMMON].items():
+                    file.append(f'{key} = "{value}"')
+
+            for source_name in self.sources.sources_names:
+                for os in list(OSEnum):
+                    if source_name not in self.envs.data[os]:
+                        continue
+                    file.append(f"[env.{source_name}.{os.value}]")
+                    for key, value in self.envs.data[os][source_name].items():
+                        file.append(f'{key} = "{value}"')
+                    file.append("")
+
+
+        # write install
+        sources = self.sources.sources_raw
+        if not sources:
+            file.append("")
+            file.append("[install]")
+
+        for name, source in sources.items():
+            source.pop("name")
+            file.append(f"[install.{name}]")
+            for key, value in source.items():
+                if key == "remove":
+                    value = "true" if value else "false"
+                    file.append("%s = %s" % (key, value))
+                    continue
+                if isinstance(value, list):
+                    file.append(f"{key} = [  ")
+                    for item in value:
+                        file.append(f'  "{item}",')
+                    file.append("]")
+                else:
+                    v = value
+                    file.append(f'{key} = "{v}"')
+            file.append("")
+
         with open(path, "w") as fp:
             fp.write("\n".join(file))

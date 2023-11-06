@@ -21,6 +21,7 @@ class SourceManager:
     def __init__(self, name: str, root: Path):
         self.name = name
         self.root = root
+        self.os = ""
 
     @property
     def path(self) -> Path:
@@ -61,6 +62,7 @@ class BaseSource(SourceManager):
         self,
         name: str,
         root: Path,
+        bin: List[str],
         git_url: Optional[str] = None,
         git_branch: Optional[str] = None,
         git_commit: Optional[str] = None,
@@ -71,13 +73,13 @@ class BaseSource(SourceManager):
         **kwargs,
     ):
         super().__init__(name, root)
-        self.git_url = str(git_url)
+        self.git_url = str(git_url) if git_url else None
         self.git_branch = git_branch
         self.git_commit = git_commit
         self.git_recursive = git_recursive
-        self.download_url = str(url)
+        self.download_url = str(url) if url else None
         self.user_agent = user_agent
-        self.local_path = Path(str(path))
+        self.local_path = path
         if self.download_url:
             self.source_type = SourceEnum.URL
         elif self.git_url:
@@ -88,6 +90,7 @@ class BaseSource(SourceManager):
             raise Exception("No source provided")
         self.group: Set[str] = set()
         self.deps: List[BaseSource] = []
+        self.bin = bin
 
     def add_dep(self, dep: "BaseSource"):
         self.deps.append(dep)
@@ -97,6 +100,24 @@ class BaseSource(SourceManager):
 
     def create_source(self):
         raise NotImplementedError
+
+    def copy_bin(self):
+        if not self.bin_path.exists():
+            self.bin_path.mkdir(parents=True, exist_ok=True)
+        for b in self.bin:
+            exist_bin_path = self.source_path / b
+            if not exist_bin_path.exists():
+                raise SourceException(f"Bin {b} not found")
+            shutil.copy(exist_bin_path, self.bin_path)
+
+    @property
+    def source_uri(self):
+        if self.__class__ == GitSource:
+            return str(self.git_url)
+        elif self.__class__ == UrlSource:
+            return str(self.download_url)
+        else:
+            return str(self.local_path)
 
     @property
     def version(self) -> str:
