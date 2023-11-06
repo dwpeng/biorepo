@@ -1,6 +1,6 @@
 [project]
 name = "biorepo"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 authors = [
     {name = "dwpeng", email = "dwpeng1122@foxmail.com"},
