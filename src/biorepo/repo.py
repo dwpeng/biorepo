@@ -1,17 +1,15 @@
-import shutil
 import json
-import sys
-from pathlib import Path
-from typing import Dict, Union, Optional, List
-
+import shutil
 import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 
+from biorepo import ui
 from biorepo.biorepo import BioRepo, GitSourceModel, LoaclSourceModel
 from biorepo.env import Envirment
 from biorepo.install import Install, Run
 from biorepo.shell import CMDShell, PythonShell, Shell, ShellEnum
 from biorepo.source import GitSource, LocalSource, SourceEnum, UrlSource
-from biorepo import ui
 
 
 class Repo(object):

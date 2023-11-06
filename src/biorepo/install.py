@@ -1,7 +1,7 @@
 import enum
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Optional, Union
 
 from rich.progress import Progress, SpinnerColumn, TaskProgressColumn
 
@@ -30,7 +30,7 @@ class Run:
         try:
             self.source.create_source()
             self.shell.execute(progress)
-            self.source.copy_bin()            
+            self.source.copy_bin()
             self.status = RunStatus.SUCCESS
             progress.live.console.print(
                 f"  [success]{ui.Emoji.SUCC}[/] Install [req]{self.source.name}[/] successful"

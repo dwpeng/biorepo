@@ -14,7 +14,6 @@ from biorepo.shell import ShellEnum
 from biorepo.source import SourceEnum
 from biorepo.ui import _console
 
-
 msg_replace = {
     "too_short": "Input is empty",
     "missing": "%s is required",
@@ -421,7 +420,6 @@ class BioRepo:
                     for key, value in self.envs.data[os][source_name].items():
                         file.append(f'{key} = "{value}"')
                     file.append("")
-
 
         # write install
         sources = self.sources.sources_raw

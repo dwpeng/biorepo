@@ -1,13 +1,13 @@
 import os
 import sys
 from pathlib import Path
-
 from typing import List, Optional
-from typer import Option, Typer, Argument
 
-from biorepo.repo import Repo
+from typer import Argument, Option, Typer
+
 from biorepo.biorepo import BioRepo, OSEnum
-from biorepo.ui import error, info, ask
+from biorepo.repo import Repo
+from biorepo.ui import ask, error, info
 
 app = Typer(
     name="biorepo",
@@ -106,7 +106,8 @@ def run(
     print(*sys.argv[sys.argv.index(name) + 1 :])
     repo.run(name, *sys.argv[sys.argv.index(name) + 1 :])
 
-@app.command(name='run')
+
+@app.command(name="run")
 def typer_run(
     name: str,
     argv: List[str],

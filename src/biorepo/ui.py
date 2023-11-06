@@ -1,9 +1,9 @@
-from typing import Optional, Union, List, Sequence
+from typing import List, Optional, Sequence, Union
 
 from rich.console import Console
 from rich.progress import Progress, ProgressColumn
-from rich.theme import Theme
 from rich.table import Table
+from rich.theme import Theme
 
 # copy from pdm/termui.py
 
@@ -61,8 +61,10 @@ def error(msg: str, *args, **kwargs):
 def ask(msg: str, default_value: str):
     return _console.input(msg) or default_value
 
+
 def choice(msg: str, choices: List[str]):
     return _console
+
 
 class UI:
     def open_spinner(self, text: str):
